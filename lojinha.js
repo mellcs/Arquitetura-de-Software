@@ -11,6 +11,9 @@ let produtos = [
   { id: 2, nome: "Hamster Anão", preco: 90, estoque: 5 }
 ];
 
+// aqui vamos guardar os pedidos criados
+let pedidos = []; 
+
 // GET /produtos → lista todos os produtos
 // Tipo, só pra ver o que tem na lojinha
 app.get("/produtos", (req, res) => {
@@ -62,8 +65,50 @@ app.put("/produtos/:id", (req, res) => {
   res.json(produto);
 });
 
+// GET /pedidos → lista todos os pedidos
+app.get("/pedidos", (req, res) => {
+  res.json(pedidos);
+});
+
+// POST /pedidos → cria um novo pedido
+// precisa mandar no corpo: { itens: [ { idProduto, quantidade } ] }
+app.post("/pedidos", (req, res) => {
+  const { itens } = req.body;
+  if (!itens || !Array.isArray(itens) || itens.length === 0) {
+    return res.status(400).json({ erro: "O pedido deve conter itens" });
+  }
+
+  // verifica se todos os produtos têm estoque suficiente
+  for (let item of itens) {
+    const produto = produtos.find(p => p.id === item.idProduto);
+    if (!produto) {
+      return res.status(400).json({ erro: `Produto ${item.idProduto} não existe` });
+    }
+    if (produto.estoque < item.quantidade) {
+      return res.status(400).json({ erro: `Estoque insuficiente para ${produto.nome}` });
+    }
+  }
+
+  // se passou, cria o pedido e decrementa estoque
+  for (let item of itens) {
+    const produto = produtos.find(p => p.id === item.idProduto);
+    produto.estoque -= item.quantidade;
+  }
+
+  const novoPedido = {
+    id: pedidos.length ? pedidos[pedidos.length - 1].id + 1 : 1,
+    itens,
+    data: new Date()
+  };
+
+  pedidos.push(novoPedido);
+
+  res.status(201).json(novoPedido);
+});
+
 // Inicia o servidor
 // Agora a gente consegue acessar a lojinha pelo http://localhost:3000
 app.listen(PORT, () => {
   console.log(`Servidor rodando na porta ${PORT}`);
 });
+
