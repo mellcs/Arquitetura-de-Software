@@ -65,6 +65,17 @@ app.put("/produtos/:id", (req, res) => {
   res.json(produto);
 });
 
+//DELETE /produtos/:id → remove um produto específico 
+app.delete("/produtos/:id", (req, res) => {
+  const id = parseInt(req.params.id);
+  const index = produtos.findIndex(p => p.id === id);
+  if (index === -1) {
+    return res.status(404).json({ erro: "Produto não encontrado" });
+  }
+  const produtoRemovido = produtos.splice(index, 1); // remove da lista
+  res.json({ mensagem: "Produto removido com sucesso", produto: produtoRemovido[0] });
+});
+
 // GET /pedidos → lista todos os pedidos
 app.get("/pedidos", (req, res) => {
   res.json(pedidos);
@@ -106,9 +117,20 @@ app.post("/pedidos", (req, res) => {
   res.status(201).json(novoPedido);
 });
 
+//GET /pedidos/:id → busca um pedido específico pelo ID
+app.get("/pedidos/:id", (req, res) => {
+  const id = parseInt(req.params.id);
+  const pedido = pedidos.find(p => p.id === id);
+  if (!pedido) {
+    return res.status(404).json({ erro: "Pedido não encontrado" });
+  }
+  res.json(pedido);
+});
+
 // Inicia o servidor
 // Agora a gente consegue acessar a lojinha pelo http://localhost:3000
 app.listen(PORT, () => {
   console.log(`Servidor rodando na porta ${PORT}`);
 });
+
 
