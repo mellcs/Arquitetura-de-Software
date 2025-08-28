@@ -5,14 +5,35 @@ const PORT = 3000;
 // Isso aqui deixa o Node entender quando a gente manda JSON no corpo da requisição
 app.use(express.json());
 
-// Banco de dados na memória, ou seja, só vai durar enquanto o servidor estiver ligado
-let produtos = [
-  { id: 1, nome: "Hamster Sírio", preco: 120, estoque: 3 },
-  { id: 2, nome: "Hamster Anão", preco: 90, estoque: 5 }
-];
+// configuração do sequelize
+const { Sequelize, DataTypes } = require("sequelize");
 
-// aqui vamos guardar os pedidos criados
-let pedidos = []; 
+// conexão com banco relacional
+const sequelize = new Sequelize({
+  dialect: "sqlite",
+  storage: "./database.sqlite" 
+});
+
+// definição do modelo Produto
+const Produto = sequelize.define("Produto", {
+  nome: { type: DataTypes.STRING, allowNull: false },
+  preco: { type: DataTypes.FLOAT, allowNull: false },
+  estoque: { type: DataTypes.INTEGER, allowNull: false }
+});
+
+// definição do modelo Pedido
+const Pedido = sequelize.define("Pedido", {
+  data: { type: DataTypes.DATE, allowNull: false, defaultValue: Sequelize.NOW }
+});
+
+// tabela intermediária PedidoItens (relação N:N entre pedidos e produtos)
+const PedidoItem = sequelize.define("PedidoItem", {
+  quantidade: { type: DataTypes.INTEGER, allowNull: false }
+});
+
+// relacionamentos
+Pedido.belongsToMany(Produto, { through: PedidoItem });
+Produto.belongsToMany(Pedido, { through: PedidoItem });
 
 // GET /produtos → lista todos os produtos
 // Tipo, só pra ver o que tem na lojinha
@@ -128,8 +149,14 @@ app.get("/pedidos/:id", (req, res) => {
 });
 
 // Inicia o servidor
-// Agora a gente consegue acessar a lojinha pelo http://localhost:3000
-app.listen(PORT, () => {
+// Agora a gente consegue acessar a lojinha pelo http://localhost:3000, sincroniza os models com o banco
+app.listen(PORT, async () => {
+  try {
+    await sequelize.sync();
+    console.log("Banco sincronizado com sucesso!");
+  } catch (err) {
+    console.error("Erro ao sincronizar banco:", err);
+  }
   console.log(`Servidor rodando na porta ${PORT}`);
 });
 
