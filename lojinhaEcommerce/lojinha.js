@@ -1,51 +1,28 @@
+//adição do prisma em tudo, basicamente. pega tudo daquele banco de dados.
+
 const express = require("express");
+const { PrismaClient } = require("@prisma/client");
 const app = express();
 const PORT = 3000;
+
+//prisma client
+const prisma = new PrismaClient();
 
 // Isso aqui deixa o Node entender quando a gente manda JSON no corpo da requisição
 app.use(express.json());
 
-// configuração do sequelize
-const { Sequelize, DataTypes } = require("sequelize");
-
-// conexão com banco relacional
-const sequelize = new Sequelize({
-  dialect: "sqlite",
-  storage: "./database.sqlite" 
-});
-
-// definição do modelo Produto
-const Produto = sequelize.define("Produto", {
-  nome: { type: DataTypes.STRING, allowNull: false },
-  preco: { type: DataTypes.FLOAT, allowNull: false },
-  estoque: { type: DataTypes.INTEGER, allowNull: false }
-});
-
-// definição do modelo Pedido
-const Pedido = sequelize.define("Pedido", {
-  data: { type: DataTypes.DATE, allowNull: false, defaultValue: Sequelize.NOW }
-});
-
-// tabela intermediária PedidoItens (relação N:N entre pedidos e produtos)
-const PedidoItem = sequelize.define("PedidoItem", {
-  quantidade: { type: DataTypes.INTEGER, allowNull: false }
-});
-
-// relacionamentos
-Pedido.belongsToMany(Produto, { through: PedidoItem });
-Produto.belongsToMany(Pedido, { through: PedidoItem });
-
 // GET /produtos → lista todos os produtos
-// Tipo, só pra ver o que tem na lojinha
-app.get("/produtos", (req, res) => {
+//usa o prisma pra pegar os produtos
+app.get("/produtos", async (req, res) => {
+  const produtos = await prisma.produto.findMany();
   res.json(produtos);
 });
 
 // GET /produtos/:id → busca um produto pelo ID
-// Você coloca um número e ele tenta achar o produto, se não achar, reclama
-app.get("/produtos/:id", (req, res) => {
+// Você coloca um número e ele tenta achar o produto, se não achar, reclama 
+app.get("/produtos/:id", async (req, res) => {
   const id = parseInt(req.params.id);
-  const produto = produtos.find(p => p.id === id);
+  const produto = await prisma.produto.findUnique({ where: { id } });
   if (!produto) {
     return res.status(404).json({ erro: "Produto não encontrado" });
   }
@@ -53,95 +30,111 @@ app.get("/produtos/:id", (req, res) => {
 });
 
 // POST /produtos → adiciona um novo produto
-// Aqui a gente coloca um produto novo, precisa dizer nome, preço e estoque
-app.post("/produtos", (req, res) => {
+// Aqui a gente coloca um produto novo, precisa dizer nome, preço e estoque. 
+app.post("/produtos", async (req, res) => {
   const { nome, preco, estoque } = req.body;
   if (!nome || preco == null || estoque == null) {
     return res.status(400).json({ erro: "Campos obrigatórios: nome, preco, estoque" });
   }
-  const novoProduto = {
-    id: produtos.length ? produtos[produtos.length - 1].id + 1 : 1, // cria ID automático
-    nome,
-    preco,
-    estoque
-  };
-  produtos.push(novoProduto); // coloca na lista
+  const novoProduto = await prisma.produto.create({
+    data: { nome, preco, estoque },
+  });
   res.status(201).json(novoProduto);
 });
 
 // PUT /produtos/:id → atualiza um produto existente
-// Se quiser mudar o nome, preço ou estoque de um produto que já existe
-app.put("/produtos/:id", (req, res) => {
+// Se quiser mudar o nome, preço ou estoque de um produto que já existe.
+app.put("/produtos/:id", async (req, res) => {
   const id = parseInt(req.params.id);
-  const produto = produtos.find(p => p.id === id);
-  if (!produto) {
+  const { nome, preco, estoque } = req.body;
+
+  const produtoExistente = await prisma.produto.findUnique({ where: { id } });
+  if (!produtoExistente) {
     return res.status(404).json({ erro: "Produto não encontrado" });
   }
 
-  const { nome, preco, estoque } = req.body;
-  if (nome !== undefined) produto.nome = nome;
-  if (preco !== undefined) produto.preco = preco;
-  if (estoque !== undefined) produto.estoque = estoque;
+  const produtoAtualizado = await prisma.produto.update({
+    where: { id },
+    data: {
+      nome: nome !== undefined ? nome : produtoExistente.nome,
+      preco: preco !== undefined ? preco : produtoExistente.preco,
+      estoque: estoque !== undefined ? estoque : produtoExistente.estoque,
+    },
+  });
 
-  res.json(produto);
+  res.json(produtoAtualizado);
 });
 
-//DELETE /produtos/:id → remove um produto específico 
-app.delete("/produtos/:id", (req, res) => {
+// DELETE /produtos/:id → remove um produto específico
+app.delete("/produtos/:id", async (req, res) => {
   const id = parseInt(req.params.id);
-  const index = produtos.findIndex(p => p.id === id);
-  if (index === -1) {
+
+  const produtoExistente = await prisma.produto.findUnique({ where: { id } });
+  if (!produtoExistente) {
     return res.status(404).json({ erro: "Produto não encontrado" });
   }
-  const produtoRemovido = produtos.splice(index, 1); // remove da lista
-  res.json({ mensagem: "Produto removido com sucesso", produto: produtoRemovido[0] });
+
+  await prisma.produto.delete({ where: { id } });
+  res.json({ mensagem: "Produto removido com sucesso", produto: produtoExistente });
 });
 
 // GET /pedidos → lista todos os pedidos
-app.get("/pedidos", (req, res) => {
+app.get("/pedidos", async (req, res) => {
+  const pedidos = await prisma.pedido.findMany({ include: { itens: true } });
   res.json(pedidos);
 });
 
 // POST /pedidos → cria um novo pedido
 // precisa mandar no corpo: { itens: [ { idProduto, quantidade } ] }
-app.post("/pedidos", (req, res) => {
+app.post("/pedidos", async (req, res) => {
   const { itens } = req.body;
   if (!itens || !Array.isArray(itens) || itens.length === 0) {
     return res.status(400).json({ erro: "O pedido deve conter itens" });
   }
 
-  // verifica se todos os produtos têm estoque suficiente
-  for (let item of itens) {
-    const produto = produtos.find(p => p.id === item.idProduto);
-    if (!produto) {
-      return res.status(400).json({ erro: `Produto ${item.idProduto} não existe` });
-    }
-    if (produto.estoque < item.quantidade) {
-      return res.status(400).json({ erro: `Estoque insuficiente para ${produto.nome}` });
-    }
+  try {
+    const novoPedido = await prisma.$transaction(async (prisma) => {
+      // verifica estoque
+      for (const item of itens) {
+        const produto = await prisma.produto.findUnique({ where: { id: item.idProduto } });
+        if (!produto) throw { status: 400, message: `Produto ${item.idProduto} não existe` };
+        if (produto.estoque < item.quantidade) throw { status: 400, message: `Estoque insuficiente para ${produto.nome}` };
+      }
+
+      // cria pedido
+      const pedido = await prisma.pedido.create({ data: {} });
+
+      // cria itens e decrementa estoque
+      for (const item of itens) {
+        await prisma.itemPedido.create({
+          data: {
+            pedidoId: pedido.id,
+            produtoId: item.idProduto,
+            quantidade: item.quantidade,
+          },
+        });
+        await prisma.produto.update({
+          where: { id: item.idProduto },
+          data: { estoque: { decrement: item.quantidade } },
+        });
+      }
+
+      return pedido;
+    });
+
+    res.status(201).json(novoPedido);
+  } catch (err) {
+    res.status(err.status || 500).json({ erro: err.message || "Erro interno" });
   }
-
-  // se passou, cria o pedido e decrementa estoque
-  for (let item of itens) {
-    const produto = produtos.find(p => p.id === item.idProduto);
-    produto.estoque -= item.quantidade;
-  }
-
-  const novoPedido = {
-    id: pedidos.length ? pedidos[pedidos.length - 1].id + 1 : 1,
-    itens,
-    data: new Date()
-  };
-
-  pedidos.push(novoPedido);
-
-  res.status(201).json(novoPedido);
 });
 
-//GET /pedidos/:id → busca um pedido específico pelo ID
-app.get("/pedidos/:id", (req, res) => {
+// GET /pedidos/:id → busca um pedido específico pelo ID
+app.get("/pedidos/:id", async (req, res) => {
   const id = parseInt(req.params.id);
-  const pedido = pedidos.find(p => p.id === id);
+  const pedido = await prisma.pedido.findUnique({
+    where: { id },
+    include: { itens: true },
+  });
   if (!pedido) {
     return res.status(404).json({ erro: "Pedido não encontrado" });
   }
@@ -149,14 +142,7 @@ app.get("/pedidos/:id", (req, res) => {
 });
 
 // Inicia o servidor
-// Agora a gente consegue acessar a lojinha pelo http://localhost:3000, sincroniza os models com o banco
-app.listen(PORT, async () => {
-  try {
-    await sequelize.sync();
-    console.log("Banco sincronizado com sucesso!");
-  } catch (err) {
-    console.error("Erro ao sincronizar banco:", err);
-  }
+// Agora a gente consegue acessar a lojinha pelo http://localhost:3000
+app.listen(PORT, () => {
   console.log(`Servidor rodando na porta ${PORT}`);
 });
-
