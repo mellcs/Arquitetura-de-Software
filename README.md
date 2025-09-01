@@ -1,14 +1,8 @@
 Loja Online – Arquitetura de Sistemas
 Estrutura de Pastas
 
-G2 AS/
-├── prisma/
-│   ├── migrations/        (Histórico das alterações no banco)
-│   └── schema.prisma      (Definição do modelo de dados)
-├── .env                   (Variáveis de ambiente)
-├── docker-compose.yml     (Configuração do Postgres e PgAdmin)
-├── lojinha.js             (Código da API)
-└── .gitignore             (Arquivos ignorados no Git)
+<img width="485" height="184" alt="image" src="https://github.com/user-attachments/assets/5cb972a7-670e-4449-a29a-07b73c56db5d" />
+
 
 docker-compose.yml
 
