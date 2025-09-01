@@ -44,14 +44,5 @@ API em Node.js com endpoints para:
 - Cadastrar produtos
 - Criar pedidos (com verificação de estoque e cálculo de valores)
 
-Como rodar
 
-1. Subir containers:
-   docker-compose up -d
-
-2. Rodar migrations:
-   npx prisma migrate dev --name init
-
-3. Iniciar API:
-   node lojinha.js
 
