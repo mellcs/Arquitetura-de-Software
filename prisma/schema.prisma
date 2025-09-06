@@ -7,6 +7,21 @@ generator client {
   provider = "prisma-client-js"
 }
 
+model Clients {
+  id        Int       @id @default(autoincrement())
+  name      String
+  email     String    @unique
+  isDeleted Boolean   @default(false)
+
+  orders    Pedidos[]
+}
+
+model Status {
+  id     Int       @id @default(autoincrement())
+  name   String    @unique
+  orders Pedidos[]
+}
+
 model Produtos {
   id      Int              @id @default(autoincrement())
   nome    String
@@ -20,8 +35,16 @@ model Pedidos {
   id         Int              @id @default(autoincrement())
   data       DateTime         @default(now())
   valorTotal Float            @default(0)
+  isDeleted  Boolean          @default(false)
 
-  itens Pedido_Produto[]
+  id_client Int
+  client    Clients           @relation(fields: [id_client], references: [id])
+
+  id_status Int
+  status    Status            @relation(fields: [id_status], references: [id])
+
+  itens     Pedido_Produto[]
+  payments  OrderPayments[]
 }
 
 model Pedido_Produto {
@@ -34,4 +57,20 @@ model Pedido_Produto {
 
   pedido  Pedidos  @relation(fields: [pedidoId], references: [id])
   produto Produtos @relation(fields: [produtoId], references: [id])
+}
+
+model TypePayments {
+  id     Int             @id @default(autoincrement())
+  name   String          @unique
+  orders OrderPayments[]
+}
+
+model OrderPayments {
+  id              Int          @id @default(autoincrement())
+  id_order        Int
+  id_type_payment Int
+  total           Float
+
+  order       Pedidos      @relation(fields: [id_order], references: [id])
+  typePayment TypePayments @relation(fields: [id_type_payment], references: [id])
 }
