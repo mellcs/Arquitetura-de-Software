@@ -3,14 +3,14 @@ const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log("Limpando tabelas...");
+  console.log("🧹 Limpando tabelas...");
   await prisma.pagamento.deleteMany();
   await prisma.pedidoItem.deleteMany();
   await prisma.pedido.deleteMany();
   await prisma.produto.deleteMany();
   await prisma.cliente.deleteMany();
 
-  console.log("Criando produtos...");
+  console.log("📦 Criando produtos...");
   const produtos = await prisma.produto.createMany({
     data: [
       { nome: "Caneca", preco: 25.0, estoque: 10 },
@@ -59,7 +59,7 @@ async function main() {
     include: { itens: true }
   });
 
-  console.log("Simulando pagamentos...");
+  console.log("💳 Simulando pagamentos...");
   async function simularPagamento(pedidoId, metodo, valor) {
     const sucesso = Math.random() > 0.3; // 70% chance de sucesso
     await prisma.pagamento.create({
@@ -82,7 +82,7 @@ async function main() {
   await simularPagamento(pedidoJoao.id, "Cartão de Crédito", pedidoJoao.valorTotal);
   await simularPagamento(pedidoMaria.id, "Pix", pedidoMaria.valorTotal);
 
-  console.log("Seeds concluídas!");
+  console.log("✅ Seeds concluídas!");
 }
 
 main()
