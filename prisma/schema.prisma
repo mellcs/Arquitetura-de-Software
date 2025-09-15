@@ -1,76 +1,66 @@
+// prisma/schema.prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
-generator client {
-  provider = "prisma-client-js"
-}
-
-model Clients {
+model Produto {
   id        Int       @id @default(autoincrement())
-  name      String
+  nome      String
+  preco     Float
+  estoque   Int
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  itens     PedidoItem[]
+}
+
+model Cliente {
+  id        Int       @id @default(autoincrement())
+  nome      String
   email     String    @unique
-  isDeleted Boolean   @default(false)
-
-  orders    Pedidos[]
+  pedidos   Pedido[]
+  createdAt DateTime  @default(now())
 }
 
-model Status {
-  id     Int       @id @default(autoincrement())
-  name   String    @unique
-  orders Pedidos[]
+model Pedido {
+  id           Int            @id @default(autoincrement())
+  clienteId    Int
+  cliente      Cliente        @relation(fields: [clienteId], references: [id])
+  status       PedidoStatus   @default(AGUARDANDO_PAGAMENTO)
+  itens        PedidoItem[]
+  valorTotal   Float          @default(0)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  pagamentos   Pagamento[]
 }
 
-model Produtos {
-  id      Int              @id @default(autoincrement())
-  nome    String
-  preco   Float
-  estoque Int
-
-  itens   Pedido_Produto[]
+model PedidoItem {
+  id         Int     @id @default(autoincrement())
+  pedidoId   Int
+  pedido     Pedido  @relation(fields: [pedidoId], references: [id])
+  produtoId  Int
+  produto    Produto @relation(fields: [produtoId], references: [id])
+  quantidade Int
+  precoUnit  Float
 }
 
-model Pedidos {
-  id         Int              @id @default(autoincrement())
-  data       DateTime         @default(now())
-  valorTotal Float            @default(0)
-  isDeleted  Boolean          @default(false)
-
-  id_client Int
-  client    Clients           @relation(fields: [id_client], references: [id])
-
-  id_status Int
-  status    Status            @relation(fields: [id_status], references: [id])
-
-  itens     Pedido_Produto[]
-  payments  OrderPayments[]
-}
-
-model Pedido_Produto {
+model Pagamento {
   id         Int      @id @default(autoincrement())
   pedidoId   Int
-  produtoId  Int
-  quantidade Int
-  valorUnit  Float
-  valorTotal Float
-
-  pedido  Pedidos  @relation(fields: [pedidoId], references: [id])
-  produto Produtos @relation(fields: [produtoId], references: [id])
+  pedido     Pedido   @relation(fields: [pedidoId], references: [id])
+  metodo     String
+  valor      Float
+  sucesso    Boolean
+  criadoEm   DateTime @default(now())
 }
 
-model TypePayments {
-  id     Int             @id @default(autoincrement())
-  name   String          @unique
-  orders OrderPayments[]
-}
-
-model OrderPayments {
-  id              Int          @id @default(autoincrement())
-  id_order        Int
-  id_type_payment Int
-  total           Float
-
-  order       Pedidos      @relation(fields: [id_order], references: [id])
-  typePayment TypePayments @relation(fields: [id_type_payment], references: [id])
+enum PedidoStatus {
+  AGUARDANDO_PAGAMENTO
+  FALHA_NO_PAGAMENTO
+  PAGO
+  CANCELADO
 }
