@@ -1,0 +1,68 @@
+// prisma/schema.prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Produto {
+  id        Int       @id @default(autoincrement())
+  nome      String
+  preco     Float
+  estoque   Int
+  deletado  Boolean   @default(false) // <-- novo campo
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  itens     PedidoItem[]
+}
+
+
+model Cliente {
+  id        Int       @id @default(autoincrement())
+  nome      String
+  email     String    @unique
+  pedidos   Pedido[]
+  createdAt DateTime  @default(now())
+}
+
+model Pedido {
+  id           Int            @id @default(autoincrement())
+  clienteId    Int
+  cliente      Cliente        @relation(fields: [clienteId], references: [id])
+  status       PedidoStatus   @default(AGUARDANDO_PAGAMENTO)
+  itens        PedidoItem[]
+  valorTotal   Float          @default(0)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  pagamentos   Pagamento[]
+}
+
+model PedidoItem {
+  id         Int     @id @default(autoincrement())
+  pedidoId   Int
+  pedido     Pedido  @relation(fields: [pedidoId], references: [id])
+  produtoId  Int
+  produto    Produto @relation(fields: [produtoId], references: [id])
+  quantidade Int
+  precoUnit  Float
+}
+
+model Pagamento {
+  id         Int      @id @default(autoincrement())
+  pedidoId   Int
+  pedido     Pedido   @relation(fields: [pedidoId], references: [id])
+  metodo     String
+  valor      Float
+  sucesso    Boolean
+  criadoEm   DateTime @default(now())
+}
+
+enum PedidoStatus {
+  AGUARDANDO_PAGAMENTO
+  FALHA_NO_PAGAMENTO
+  PAGO
+  CANCELADO
+}
