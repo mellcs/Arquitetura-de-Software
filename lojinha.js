@@ -1,235 +1,201 @@
+// lojinha.js
 const express = require("express");
 const { PrismaClient } = require("@prisma/client");
-const app = express();
-const PORT = 3000;
+const bodyParser = require("body-parser");
 
 const prisma = new PrismaClient();
-app.use(express.json());
+const app = express();
+app.use(bodyParser.json());
 
-//
-// ROTAS DE CLIENTES
-//
-
-// cadastrar cliente
-app.post("/clients", async (req, res) => {
-  const { name, email } = req.body;
-  if (!name || !email) return res.status(400).json({ erro: "Nome e email são obrigatórios" });
-
-  try {
-    const novoCliente = await prisma.clients.create({ data: { name, email } });
-    res.status(201).json(novoCliente);
-  } catch (err) {
-    res.status(500).json({ erro: "Erro ao cadastrar cliente" });
-  }
-});
-
-// listar pedidos de um cliente
-app.get("/clients/:id/orders", async (req, res) => {
-  const id = parseInt(req.params.id);
-  const pedidos = await prisma.pedidos.findMany({
-    where: { id_client: id },
-    include: { itens: true, status: true, payments: { include: { typePayment: true } } },
-  });
-  res.json(pedidos);
-});
-
-//
-// ROTAS DE PRODUTOS
-//
+/* --- PRODUTOS --- */
+// Listar
 app.get("/produtos", async (req, res) => {
-  const produtos = await prisma.produtos.findMany();
+  const produtos = await prisma.produto.findMany();
   res.json(produtos);
 });
 
+// Buscar por id
 app.get("/produtos/:id", async (req, res) => {
-  const id = parseInt(req.params.id);
-  const produto = await prisma.produtos.findUnique({ where: { id } });
-  if (!produto) return res.status(404).json({ erro: "Produto não encontrado" });
-  res.json(produto);
+  const id = Number(req.params.id);
+  const p = await prisma.produto.findUnique({ where: { id }});
+  if (!p) return res.status(404).json({ error: "Produto não encontrado" });
+  res.json(p);
 });
 
+// Criar
 app.post("/produtos", async (req, res) => {
   const { nome, preco, estoque } = req.body;
-  if (!nome || preco == null || estoque == null) {
-    return res.status(400).json({ erro: "Campos obrigatórios: nome, preco, estoque" });
-  }
-  const novoProduto = await prisma.produtos.create({
-    data: { nome, preco, estoque },
-  });
-  res.status(201).json(novoProduto);
+  if (!nome || preco == null || estoque == null)
+    return res.status(400).json({ error: "Faltam campos" });
+  const novo = await prisma.produto.create({ data: { nome, preco: Number(preco), estoque: Number(estoque) }});
+  res.status(201).json(novo);
 });
 
-// não é mais possível atualizar o estoque por aqui
+// Atualizar (não permite alterar estoque)
 app.put("/produtos/:id", async (req, res) => {
-  const id = parseInt(req.params.id);
+  const id = Number(req.params.id);
   const { nome, preco } = req.body;
-
-  const produtoExistente = await prisma.produtos.findUnique({ where: { id } });
-  if (!produtoExistente) return res.status(404).json({ erro: "Produto não encontrado" });
-
-  const produtoAtualizado = await prisma.produtos.update({
+  const produto = await prisma.produto.findUnique({ where: { id }});
+  if (!produto) return res.status(404).json({ error: "Produto não encontrado" });
+  const atualizado = await prisma.produto.update({
     where: { id },
     data: {
-      nome: nome ?? produtoExistente.nome,
-      preco: preco ?? produtoExistente.preco,
-    },
+      nome: nome ?? produto.nome,
+      preco: preco != null ? Number(preco) : produto.preco
+    }
   });
-
-  res.json(produtoAtualizado);
-});
-
-// endpoint, atualiza o estoque separado
-app.put("/products/:id/stocks", async (req, res) => {
-  const id = parseInt(req.params.id);
-  const { estoque } = req.body;
-
-  if (estoque == null) return res.status(400).json({ erro: "Estoque é obrigatório" });
-
-  const produtoExistente = await prisma.produtos.findUnique({ where: { id } });
-  if (!produtoExistente) return res.status(404).json({ erro: "Produto não encontrado" });
-
-  const atualizado = await prisma.produtos.update({
-    where: { id },
-    data: { estoque },
-  });
-
   res.json(atualizado);
 });
 
-app.delete("/produtos/:id", async (req, res) => {
-  const id = parseInt(req.params.id);
-
-  const produtoExistente = await prisma.produtos.findUnique({ where: { id } });
-  if (!produtoExistente) return res.status(404).json({ erro: "Produto não encontrado" });
-
-  await prisma.produtos.delete({ where: { id } });
-  res.json({ mensagem: "Produto removido com sucesso", produto: produtoExistente });
+// Endpoint específico para ajustar estoque
+app.patch("/produtos/:id/estoque", async (req, res) => {
+  const id = Number(req.params.id);
+  const { estoque } = req.body;
+  if (estoque == null) return res.status(400).json({ error: "Informe estoque" });
+  const p = await prisma.produto.update({ where:{ id }, data: { estoque: Number(estoque) }});
+  res.json(p);
 });
 
-//
-// ROTAS DE PEDIDOS
-//
-app.get("/pedidos", async (req, res) => {
-  const pedidos = await prisma.pedidos.findMany({
-    include: { itens: true, status: true, payments: { include: { typePayment: true } } },
+// Deletar
+app.delete("/produtos/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  await prisma.produto.delete({ where: { id }});
+  res.status(204).send();
+});
+
+/* --- CLIENTES --- */
+app.post("/clientes", async (req, res) => {
+  const { nome, email } = req.body;
+  if (!nome || !email) return res.status(400).json({ error: "nome/email obrigatórios" });
+  try {
+    const c = await prisma.cliente.create({ data: { nome, email }});
+    res.status(201).json(c);
+  } catch (err) {
+    res.status(400).json({ error: "Erro ao criar cliente", details: err.message });
+  }
+});
+
+app.get("/clientes/:id/pedidos", async (req, res) => {
+  const id = Number(req.params.id);
+  const pedidos = await prisma.pedido.findMany({
+    where: { clienteId: id },
+    include: { itens: { include: { produto: true } }, pagamentos: true }
   });
   res.json(pedidos);
 });
 
-app.get("/pedidos/:id", async (req, res) => {
-  const id = parseInt(req.params.id);
-  const pedido = await prisma.pedidos.findUnique({
-    where: { id },
-    include: { itens: true, status: true, payments: { include: { typePayment: true } } },
-  });
-  if (!pedido) return res.status(404).json({ erro: "Pedido não encontrado" });
-  res.json(pedido);
-});
-
-// todo pedido precisa ter cliente, status default = AGUARDANDO PAGAMENTO
+/* --- PEDIDOS --- */
+// Criar pedido (IMPORTANTE: operação transacional)
 app.post("/pedidos", async (req, res) => {
-  const { id_client, itens } = req.body;
-  if (!id_client || !itens || !Array.isArray(itens) || itens.length === 0) {
-    return res.status(400).json({ erro: "Cliente e itens são obrigatórios" });
-  }
+  const { clienteId, itens } = req.body;
+  if (!clienteId || !Array.isArray(itens) || itens.length === 0)
+    return res.status(400).json({ error: "clienteId e itens obrigatórios" });
 
-  try {
-    const novoPedido = await prisma.$transaction(async (prisma) => {
-      let valorTotalPedido = 0;
+  // Validar cliente existe
+  const cliente = await prisma.cliente.findUnique({ where: { id: Number(clienteId) }});
+  if (!cliente) return res.status(400).json({ error: "Cliente não encontrado" });
 
-      const cliente = await prisma.clients.findUnique({ where: { id: id_client } });
-      if (!cliente) throw { status: 400, message: "Cliente não encontrado" };
-
-      // pega status default
-      const statusDefault = await prisma.status.findFirst({ where: { name: "AGUARDANDO PAGAMENTO" } });
-      const pedido = await prisma.pedidos.create({ data: { id_client, id_status: statusDefault.id } });
-
-      for (const item of itens) {
-        const produto = await prisma.produtos.findUnique({ where: { id: item.idProduto } });
-        if (!produto) throw { status: 400, message: `Produto ${item.idProduto} não existe` };
-        if (produto.estoque < item.quantidade) throw { status: 400, message: `Estoque insuficiente para ${produto.nome}` };
-
-        const valorUnit = produto.preco;
-        const valorTotal = valorUnit * item.quantidade;
-        valorTotalPedido += valorTotal;
-
-        await prisma.pedido_Produto.create({
-          data: {
-            pedidoId: pedido.id,
-            produtoId: item.idProduto,
-            quantidade: item.quantidade,
-            valorUnit,
-            valorTotal,
-          },
-        });
-
-        await prisma.produtos.update({
-          where: { id: item.idProduto },
-          data: { estoque: { decrement: item.quantidade } },
-        });
-      }
-
-      await prisma.pedidos.update({
-        where: { id: pedido.id },
-        data: { valorTotal: valorTotalPedido },
-      });
-
-      return pedido;
-    });
-
-    res.status(201).json(novoPedido);
-  } catch (err) {
-    res.status(err.status || 500).json({ erro: err.message || "Erro interno" });
-  }
-});
-
-//
-// PAGAMENTOS
-//
-
-// confirma pagamento com Math.random()
-app.post("/orders/:id/payments/confirm", async (req, res) => {
-  const id = parseInt(req.params.id);
-  const { pagamentos } = req.body; 
-
-  const pedido = await prisma.pedidos.findUnique({ where: { id } });
-  if (!pedido) return res.status(404).json({ erro: "Pedido não encontrado" });
-
-  try {
-    for (const p of pagamentos) {
-      const sucesso = Math.random() > 0.3; 
-      await prisma.orderPayments.create({
-        data: { id_order: id, id_type_payment: p.id_type_payment, total: p.total },
-      });
-
-      if (!sucesso) {
-        const statusFail = await prisma.status.findFirst({ where: { name: "CANCELADO" } });
-        await prisma.pedidos.update({ where: { id }, data: { id_status: statusFail.id } });
-        return res.json({ mensagem: "Falha no pagamento, pedido cancelado" });
+  // Start transaction
+  const result = await prisma.$transaction(async (prismaTx) => {
+    // Checar estoque para cada item
+    for (const it of itens) {
+      const prod = await prismaTx.produto.findUnique({ where: { id: Number(it.produtoId) }});
+      if (!prod) throw { status: 400, message: `Produto ${it.produtoId} não existe` };
+      if (prod.estoque < Number(it.quantidade)) {
+        throw { status: 400, message: `Sem estoque suficiente para produto ${prod.nome}` };
       }
     }
 
-    const statusPago = await prisma.status.findFirst({ where: { name: "PAGO" } });
-    await prisma.pedidos.update({ where: { id }, data: { id_status: statusPago.id } });
-    res.json({ mensagem: "Pagamento confirmado e pedido pago" });
-  } catch (err) {
-    res.status(500).json({ erro: "Erro no processamento do pagamento" });
-  }
+    // Criar pedido
+    const pedido = await prismaTx.pedido.create({
+      data: {
+        clienteId: Number(clienteId),
+        status: "AGUARDANDO_PAGAMENTO",
+        valorTotal: 0 // atualizamos depois
+      }
+    });
+
+    // Criar itens e decrementar estoque
+    let total = 0;
+    for (const it of itens) {
+      const prod = await prismaTx.produto.findUnique({ where: { id: Number(it.produtoId) }});
+      const precoUnit = prod.preco;
+      await prismaTx.pedidoItem.create({
+        data: {
+          pedidoId: pedido.id,
+          produtoId: prod.id,
+          quantidade: Number(it.quantidade),
+          precoUnit: precoUnit
+        }
+      });
+      // decrementar estoque
+      await prismaTx.produto.update({
+        where: { id: prod.id },
+        data: { estoque: prod.estoque - Number(it.quantidade) }
+      });
+      total += precoUnit * Number(it.quantidade);
+    }
+
+    // Atualizar valorTotal
+    const pedidoFinal = await prismaTx.pedido.update({
+      where: { id: pedido.id },
+      data: { valorTotal: total },
+      include: { itens: true }
+    });
+
+    return pedidoFinal;
+  }).catch(err => { throw err; });
+
+  // Se chegou aqui, tudo bem
+  res.status(201).json(result);
 });
 
-// buscar métodos de pagamento de um pedido
-app.get("/orders/:id/payments", async (req, res) => {
-  const id = parseInt(req.params.id);
-  const pagamentos = await prisma.orderPayments.findMany({
-    where: { id_order: id },
-    include: { typePayment: true },
-  });
+// Buscar pedidos (todos)
+app.get("/pedidos", async (req, res) => {
+  const pedidos = await prisma.pedido.findMany({ include: { itens: { include: { produto: true } }, cliente: true, pagamentos: true }});
+  res.json(pedidos);
+});
+
+// Buscar pedido por id
+app.get("/pedidos/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  const p = await prisma.pedido.findUnique({ where: { id }, include: { itens: { include: { produto: true } }, cliente: true, pagamentos: true }});
+  if (!p) return res.status(404).json({ error: "Pedido não encontrado" });
+  res.json(p);
+});
+
+/* --- PAGAMENTO (simulado) --- */
+// Enviar métodos de pagamento para confirmar
+app.post("/pedidos/:id/pagamento", async (req, res) => {
+  const id = Number(req.params.id);
+  const { metodos } = req.body; // exemplo: [{metodo: "boleto", valor: 30}, {metodo:"cartao", valor:10}]
+  const pedido = await prisma.pedido.findUnique({ where: { id }});
+  if (!pedido) return res.status(404).json({ error: "Pedido não encontrado" });
+
+  // Simular pagamentos: se qualquer um falhar -> CANCELADO
+  let allSuccess = true;
+  for (const m of metodos) {
+    const sucesso = Math.random() > 0.2; // 80% de sucesso (ajuste conforme quiser)
+    await prisma.pagamento.create({
+      data: { pedidoId: id, metodo: m.metodo, valor: Number(m.valor), sucesso }
+    });
+    if (!sucesso) allSuccess = false;
+  }
+
+  const novoStatus = allSuccess ? "PAGO" : "CANCELADO";
+  await prisma.pedido.update({ where: { id }, data: { status: novoStatus }});
+  res.json({ status: novoStatus });
+});
+
+// Buscar métodos de pagamento de um pedido
+app.get("/pedidos/:id/pagamentos", async (req, res) => {
+  const id = Number(req.params.id);
+  const pagamentos = await prisma.pagamento.findMany({ where: { pedidoId: id }});
   res.json(pagamentos);
 });
 
-//
-// INICIA O SERVIDOR
-//
+/* --- START SERVER --- */
+const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`Servidor rodando na porta ${PORT}`);
+  console.log(`API rodando na porta ${PORT}`);
 });
