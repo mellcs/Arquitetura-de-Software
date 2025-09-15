@@ -13,10 +13,12 @@ model Produto {
   nome      String
   preco     Float
   estoque   Int
+  deletado  Boolean   @default(false) // <-- novo campo
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   itens     PedidoItem[]
 }
+
 
 model Cliente {
   id        Int       @id @default(autoincrement())
