@@ -1,1 +1,122 @@
+version: "3.9"
+
+services:
+  # --- ORDERS ---
+  orders:
+    build: ./orders
+    container_name: orders-service
+    ports:
+      - "3001:3001"
+    env_file:
+      - ./orders/.env
+    depends_on:
+      - orders-db
+    networks:
+      - backend
+
+  orders-db:
+    image: postgres:15
+    container_name: orders-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: orders
+    ports:
+      - "5432:5432"
+    volumes:
+      - orders-data:/var/lib/postgresql/data
+    networks:
+      - backend
+
+  # --- PAYMENTS ---
+  payments:
+    build: ./payments
+    container_name: payments-service
+    ports:
+      - "3002:3002"
+    env_file:
+      - ./payments/.env
+    depends_on:
+      - payments-db
+    networks:
+      - backend
+
+  payments-db:
+    image: postgres:15
+    container_name: payments-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: payments
+    ports:
+      - "5433:5432"
+    volumes:
+      - payments-data:/var/lib/postgresql/data
+    networks:
+      - backend
+
+  # --- PRODUCTS ---
+  products:
+    build: ./products
+    container_name: products-service
+    ports:
+      - "3003:3003"
+    env_file:
+      - ./products/.env
+    depends_on:
+      - products-db
+    networks:
+      - backend
+
+  products-db:
+    image: postgres:15
+    container_name: products-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: products
+    ports:
+      - "5434:5432"
+    volumes:
+      - products-data:/var/lib/postgresql/data
+    networks:
+      - backend
+
+  # --- USERS ---
+  users:
+    build: ./users
+    container_name: users-service
+    ports:
+      - "3004:3004"
+    env_file:
+      - ./users/.env
+    depends_on:
+      - users-db
+    networks:
+      - backend
+
+  users-db:
+    image: postgres:15
+    container_name: users-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: users
+    ports:
+      - "5435:5432"
+    volumes:
+      - users-data:/var/lib/postgresql/data
+    networks:
+      - backend
+
+# Volumes para persistência
+volumes:
+  orders-data:
+  payments-data:
+  products-data:
+  users-data:
+
+networks:
+  backend:
+    driver: bridge
 
