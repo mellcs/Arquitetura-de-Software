@@ -1,10 +1,7 @@
 FROM node:20
-
 WORKDIR /app
-
 COPY package*.json ./
 RUN npm install
-
 COPY . .
-
-CMD ["sh", "-c", "npx prisma migrate deploy && node src/server.js"]
+EXPOSE 3003
+CMD ["sh", "-c", "npx prisma migrate deploy && npx prisma db seed && npm start"]
