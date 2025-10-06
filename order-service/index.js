@@ -1,0 +1,107 @@
+const express = require('express');
+const axios = require('./config/axios'); // axios singleton local (ver abaixo)
+const { v4: uuidv4 } = require('uuid');
+
+const app = express();
+const PORT = 3000;
+const PREFIX = '/order-service/v1';
+
+app.use(express.json());
+
+/**
+ * Implementação em memória (para demo)
+ * Estruturas:
+ * - products: não aqui (consulta via product-service)
+ * - pedidos: array local
+ */
+
+let pedidos = [
+  {
+    id: "1",
+    clienteId: "cliente-1",
+    status: "AGUARDANDO PAGAMENTO",
+    valorTotal: 500,
+    itens: [{ produtoId: "prod-abc", quantidade: 2 }]
+  }
+];
+
+// GET /order-service/v1/pedidos
+app.get(`${PREFIX}/pedidos`, (req, res) => {
+  res.json(pedidos);
+});
+
+// GET /order-service/v1/pedidos/:id
+app.get(`${PREFIX}/pedidos/:id`, (req, res) => {
+  const order = pedidos.find(p => p.id === req.params.id);
+  if (!order) return res.status(404).json({ message: 'Pedido não encontrado.'});
+  res.json(order);
+});
+
+// POST /order-service/v1/pedidos
+// body: { clienteId, itens: [{produtoId, quantidade}] }
+app.post(`${PREFIX}/pedidos`, async (req, res) => {
+  const { clienteId, itens } = req.body;
+  if (!clienteId || !Array.isArray(itens) || itens.length === 0) {
+    return res.status(400).json({ message: 'clienteId e itens são obrigatórios.'});
+  }
+
+  // validar estoque consultando product-service
+  try {
+    // consultar cada produto na product-service
+    for (const item of itens) {
+      const resp = await axios.get(`/product-service/v1/produtos/${item.produtoId}`);
+      const produto = resp.data;
+      if (!produto) {
+        return res.status(404).json({ message: `Produto ${item.produtoId} não encontrado.`});
+      }
+      if (produto.estoque < item.quantidade) {
+        return res.status(400).json({ message: `Estoque insuficiente para produto ${item.produtoId}.`});
+      }
+    }
+
+    // criar pedido em memória
+    const novo = {
+      id: uuidv4(),
+      clienteId,
+      status: "AGUARDANDO PAGAMENTO",
+      itens,
+      valorTotal: 0
+    };
+
+    // calcular valorTotal (consultando product-service novamente)
+    let total = 0;
+    for (const item of itens) {
+      const resp = await axios.get(`/product-service/v1/produtos/${item.produtoId}`);
+      total += resp.data.preco * item.quantidade;
+    }
+    novo.valorTotal = total;
+
+    // decrementar estoque em product-service (apenas se tudo ok)
+    for (const item of itens) {
+      await axios.post(`/product-service/v1/produtos/${item.produtoId}/estoque`, {
+        delta: -item.quantidade
+      });
+    }
+
+    pedidos.push(novo);
+    return res.status(201).json(novo);
+
+  } catch (err) {
+    console.error('[Order Service] Erro ao criar pedido:', err.message || err);
+    return res.status(500).json({ message: 'Erro interno ao criar pedido', error: err.message });
+  }
+});
+
+// Endpoint para atualizar status do pedido (usado por payment-service)
+app.patch(`${PREFIX}/pedidos/:id/status`, (req, res) => {
+  const order = pedidos.find(p => p.id === req.params.id);
+  if (!order) return res.status(404).json({ message: 'Pedido não encontrado.'});
+  const { status } = req.body;
+  if (!status) return res.status(400).json({ message: 'status é obrigatório.'});
+  order.status = status;
+  return res.json(order);
+});
+
+app.listen(PORT, () => {
+  console.log(`[Order Service] Rodando na porta ${PORT}`);
+});
