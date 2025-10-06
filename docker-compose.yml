@@ -1,0 +1,148 @@
+version: '3.8'
+
+networks:
+  appnet:
+    driver: bridge
+
+services:
+  # --- Bancos ---
+  orders-db:
+    image: mongo:6.0
+    restart: always
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: admin
+    volumes:
+      - orders_mongo_data:/data/db
+    networks:
+      - appnet
+    ports:
+      - "27017:27017"  # agora acessível externamente
+    healthcheck:
+      test: ["CMD", "mongo", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  payments-db:
+    image: postgres:15
+    restart: always
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin
+      POSTGRES_DB: payments_db
+    volumes:
+      - payments_postgres_data:/var/lib/postgresql/data
+    networks:
+      - appnet
+    ports:
+      - "5432:5432"  # porta externa
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  product-db:
+    image: postgres:15
+    restart: always
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin
+      POSTGRES_DB: product_db
+    volumes:
+      - product_postgres_data:/var/lib/postgresql/data
+    networks:
+      - appnet
+    ports:
+      - "5433:5432"  # porta externa
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  client-db:
+    image: postgres:15
+    restart: always
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin
+      POSTGRES_DB: client_db
+    volumes:
+      - client_postgres_data:/var/lib/postgresql/data
+    networks:
+      - appnet
+    ports:
+      - "5434:5432"  # porta externa
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # --- Services ---
+  product-service:
+    build: ./product-service
+    container_name: product_service
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      - DATABASE_URL=postgresql://admin:admin@product-db:5432/product_db
+    networks:
+      - appnet
+    depends_on:
+      - product-db
+      - orders-db
+
+  order-service:
+    build: ./order-service
+    container_name: orders_service
+    restart: unless-stopped
+    ports:
+      - "3002:3000"
+    environment:
+      - DATABASE_URL=mongodb://orders-db:27017/orders_db
+    networks:
+      - appnet
+    depends_on:
+      - product-service
+      - orders-db
+    command: ["sh", "-c", "node seed.js || true && node index.js"]
+
+  client-service:
+    build: ./client-service
+    container_name: client_service
+    restart: unless-stopped
+    ports:
+      - "3003:3000"
+    environment:
+      - DATABASE_URL=postgresql://admin:admin@client-db:5432/client_db
+    networks:
+      - appnet
+    depends_on:
+      - client-db
+      - order-service
+
+  payment-service:
+    build: ./payment-service
+    container_name: payments_service
+    restart: unless-stopped
+    ports:
+      - "3004:3000"
+    environment:
+      - DATABASE_URL=postgresql://admin:admin@payments-db:5432/payments_db
+      - ORDER_API_URL=http://order-service:3000
+    networks:
+      - appnet
+    depends_on:
+      - payments-db
+      - order-service
+    command: ["sh", "-c", "node seed.js || true && node index.js"]
+
+volumes:
+  orders_mongo_data:
+  payments_postgres_data:
+  product_postgres_data:
+  client_postgres_data:
