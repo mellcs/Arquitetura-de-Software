@@ -65,7 +65,7 @@ app.delete('/v1/payments/:id', (req, res) => {
 });
 
 // =========================
-//  Processar pagamento (sempre aprovado)
+//  Processar pagamento (70% de chance de sucesso)
 // =========================
 app.post('/v1/payments/:id/process', async (req, res) => {
   const pagamento = pagamentos.find(p => p.id === req.params.id);
@@ -74,39 +74,46 @@ app.post('/v1/payments/:id/process', async (req, res) => {
   const { meios } = req.body;
   if (!Array.isArray(meios) || meios.length === 0) return res.status(400).json({ message: 'meios é obrigatório' });
 
-  console.log(`[Payments] Processando pagamento ${pagamento.id} como PAGO`);
+  // definir sucesso com 70% de chance
+  const sucesso = Math.random() < 0.7;
+
+  console.log(`[Payments] Processando pagamento ${pagamento.id}...`);
 
   try {
     // buscar pedido para validar existência
     const pedidoResp = await axios.get(`/order-service/v1/pedidos/${pagamento.pedidoId}`);
     const pedido = pedidoResp.data;
 
-    // marca todos os meios como aprovados
-    const resultados = meios.map(m => ({ meio: m, aprovou: true }));
+    const resultados = meios.map(m => ({ meio: m, aprovou: sucesso }));
 
-    // atualizar status do pedido via Order Service
-    await axios.patch(`/order-service/v1/pedidos/${pagamento.pedidoId}/status`, { status: 'PAGO' });
+    if (sucesso) {
+      // atualizar status do pedido via Order Service
+      await axios.patch(`/order-service/v1/pedidos/${pagamento.pedidoId}/status`, { status: 'PAGO' });
 
-    // atualizar status local do pagamento
-    pagamento.status = 'PAGO';
-    pagamento.resultados = resultados;
+      // atualizar status local
+      pagamento.status = 'PAGO';
+      pagamento.resultados = resultados;
 
-    // notificar cliente via client-service (se disponível)
-    try {
-      if (pedido.clienteId) {
-        await axios.post(`http://client-service:3000/v1/clientes/${pedido.clienteId}/notify`, {
-          message: `Pagamento confirmado para pedido ${pedido.id}`
-        });
-      }
-    } catch (notifyErr) {
-      console.warn('[Payments] Falha ao notificar cliente:', notifyErr.message);
+      // notificação simples no console
+      console.log(`NOTIFICAÇÃO: O pagamento do pedido de ${pedido.clienteNome || 'Cliente'} foi confirmado ✅`);
+
+      return res.json({
+        pagamentoId: pagamento.id,
+        status: pagamento.status,
+        resultados
+      });
+
+    } else {
+      // pagamento falhou
+      pagamento.status = 'FALHOU';
+      pagamento.resultados = resultados;
+      console.log(`[Payments] Pagamento ${pagamento.id} FALHOU ❌`);
+      return res.status(400).json({
+        pagamentoId: pagamento.id,
+        status: pagamento.status,
+        resultados
+      });
     }
-
-    return res.json({
-      pagamentoId: pagamento.id,
-      status: pagamento.status,
-      resultados
-    });
 
   } catch (err) {
     console.error('[Payments] erro:', err.message || err);
