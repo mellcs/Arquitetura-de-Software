@@ -10,6 +10,9 @@ app.use(express.json());
 // banco de pagamentos em memória
 let pagamentos = [];
 
+// formas de pagamento disponíveis
+const METODOS_VALIDOS = ['cartao_credito', 'debito', 'pix', 'dinheiro'];
+
 // =========================
 //  Listar todos os pagamentos
 // =========================
@@ -33,17 +36,27 @@ app.get('/v1/payments/:id', (req, res) => {
 //  Criar pagamento
 // =========================
 app.post('/v1/payments', (req, res) => {
-  const { id, pedidoId, valor, status } = req.body;
+  const { id, pedidoId, valor, status, meios } = req.body;
 
   if (!pedidoId || typeof valor !== 'number') {
     return res.status(400).json({ message: 'pedidoId e valor são obrigatórios.' });
+  }
+
+  // valida métodos passados
+  let meiosValidos = [];
+  if (Array.isArray(meios) && meios.length > 0) {
+    meiosValidos = meios.filter(m => METODOS_VALIDOS.includes(m));
+    if (meiosValidos.length === 0) {
+      return res.status(400).json({ message: 'Nenhum método de pagamento válido fornecido.' });
+    }
   }
 
   const novo = {
     id: id || uuidv4(),
     pedidoId,
     valor,
-    status: status || 'PENDENTE'
+    status: status || 'PENDENTE',
+    meios: meiosValidos.length > 0 ? meiosValidos : undefined
   };
 
   pagamentos.push(novo);
@@ -71,13 +84,31 @@ app.post('/v1/payments/:id/process', async (req, res) => {
   const pagamento = pagamentos.find(p => p.id === req.params.id);
   if (!pagamento) return res.status(404).json({ message: 'Pagamento não encontrado.' });
 
-  const { meios } = req.body;
-  if (!Array.isArray(meios) || meios.length === 0) return res.status(400).json({ message: 'meios é obrigatório' });
+  let { meios } = req.body;
+
+  // se não vier métodos, usa os definidos no pagamento ou escolhe aleatórios
+  if (!Array.isArray(meios) || meios.length === 0) {
+    if (Array.isArray(pagamento.meios) && pagamento.meios.length > 0) {
+      meios = pagamento.meios;
+    } else {
+      // sorteia 1 a 2 métodos aleatórios
+      const qtd = Math.floor(Math.random() * 2) + 1;
+      meios = [];
+      while (meios.length < qtd) {
+        const escolhido = METODOS_VALIDOS[Math.floor(Math.random() * METODOS_VALIDOS.length)];
+        if (!meios.includes(escolhido)) meios.push(escolhido);
+      }
+    }
+  } else {
+    // filtra apenas métodos válidos
+    meios = meios.filter(m => METODOS_VALIDOS.includes(m));
+    if (meios.length === 0) return res.status(400).json({ message: 'Nenhum método de pagamento válido fornecido.' });
+  }
 
   // definir sucesso com 70% de chance
   const sucesso = Math.random() < 0.7;
 
-  console.log(`[Payments] Processando pagamento ${pagamento.id}...`);
+  console.log(`[Payments] Processando pagamento ${pagamento.id} com métodos: ${meios.join(', ')}...`);
 
   try {
     // buscar pedido para validar existência
@@ -108,6 +139,15 @@ app.post('/v1/payments/:id/process', async (req, res) => {
       pagamento.status = 'FALHOU';
       pagamento.resultados = resultados;
       console.log(`[Payments] Pagamento ${pagamento.id} FALHOU ❌`);
+
+      // avisar Order Service para cancelar pedido e devolver estoque
+      try {
+        await axios.patch(`/order-service/v1/pedidos/${pagamento.pedidoId}/status`, { status: 'CANCELADO' });
+        console.log(`[Payments] Pedido ${pagamento.pedidoId} marcado como CANCELADO no Order Service`);
+      } catch (err) {
+        console.error('[Payments] Falha ao cancelar pedido no Order Service:', err.message || err);
+      }
+
       return res.status(400).json({
         pagamentoId: pagamento.id,
         status: pagamento.status,
