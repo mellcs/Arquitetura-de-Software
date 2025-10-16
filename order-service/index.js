@@ -8,17 +8,12 @@ const PREFIX = '/order-service/v1';
 
 app.use(express.json());
 
-/**
- * Implementação em memória (para demo)
- * Estruturas:
- * - products: não aqui (consulta via product-service)
- * - pedidos: array local
- */
-
+// DB em memória
 let pedidos = [
   {
     id: "1",
     clienteId: "cliente-1",
+    clienteNome: "Cliente 1",
     status: "AGUARDANDO PAGAMENTO",
     valorTotal: 500,
     itens: [{ produtoId: "prod-abc", quantidade: 2 }]
@@ -45,7 +40,7 @@ app.get(`${PREFIX}/pedidos/:id`, (req, res) => {
 //  Criar pedido
 // =========================
 app.post(`${PREFIX}/pedidos`, async (req, res) => {
-  const { clienteId, itens } = req.body;
+  const { clienteId, clienteNome, itens } = req.body;
   if (!clienteId || !Array.isArray(itens) || itens.length === 0) {
     return res.status(400).json({ message: 'clienteId e itens são obrigatórios.'});
   }
@@ -55,18 +50,15 @@ app.post(`${PREFIX}/pedidos`, async (req, res) => {
     for (const item of itens) {
       const resp = await axios.get(`/product-service/v1/produtos/${item.produtoId}`);
       const produto = resp.data;
-      if (!produto) {
-        return res.status(404).json({ message: `Produto ${item.produtoId} não encontrado.`});
-      }
-      if (produto.estoque < item.quantidade) {
-        return res.status(400).json({ message: `Estoque insuficiente para produto ${item.produtoId}.`});
-      }
+      if (!produto) return res.status(404).json({ message: `Produto ${item.produtoId} não encontrado.`});
+      if (produto.estoque < item.quantidade) return res.status(400).json({ message: `Estoque insuficiente para produto ${item.produtoId}.`});
     }
 
-    // criar pedido em memória
+    // criar pedido
     const novo = {
       id: uuidv4(),
       clienteId,
+      clienteNome: clienteNome || 'Cliente',
       status: "AGUARDANDO PAGAMENTO",
       itens,
       valorTotal: 0
@@ -80,11 +72,9 @@ app.post(`${PREFIX}/pedidos`, async (req, res) => {
     }
     novo.valorTotal = total;
 
-    // decrementar estoque em product-service
+    // decrementar estoque
     for (const item of itens) {
-      await axios.post(`/product-service/v1/produtos/${item.produtoId}/estoque`, {
-        delta: -item.quantidade
-      });
+      await axios.post(`/product-service/v1/produtos/${item.produtoId}/estoque`, { delta: -item.quantidade });
     }
 
     pedidos.push(novo);
@@ -99,12 +89,26 @@ app.post(`${PREFIX}/pedidos`, async (req, res) => {
 // =========================
 //  Atualizar status do pedido
 // =========================
-app.patch(`${PREFIX}/pedidos/:id/status`, (req, res) => {
+app.patch(`${PREFIX}/pedidos/:id/status`, async (req, res) => {
   const order = pedidos.find(p => p.id === req.params.id);
   if (!order) return res.status(404).json({ message: 'Pedido não encontrado.'});
   const { status } = req.body;
   if (!status) return res.status(400).json({ message: 'status é obrigatório.'});
+
   order.status = status;
+
+  // se status for CANCELADO, devolver estoque
+  if (status === 'CANCELADO') {
+    try {
+      for (const item of order.itens) {
+        await axios.post(`/product-service/v1/produtos/${item.produtoId}/estoque`, { delta: item.quantidade });
+        console.log(`[Order Service] Estoque devolvido para produto ${item.produtoId} (quantidade ${item.quantidade})`);
+      }
+    } catch (err) {
+      console.error('[Order Service] Erro ao devolver estoque:', err.message || err);
+    }
+  }
+
   return res.json(order);
 });
 
@@ -115,9 +119,7 @@ app.delete(`${PREFIX}/pedidos/:id`, (req, res) => {
   const pedidoId = req.params.id;
   const index = pedidos.findIndex(p => p.id === pedidoId);
 
-  if (index === -1) {
-    return res.status(404).json({ message: 'Pedido não encontrado.' });
-  }
+  if (index === -1) return res.status(404).json({ message: 'Pedido não encontrado.' });
 
   const removido = pedidos[index];
   pedidos.splice(index, 1);
