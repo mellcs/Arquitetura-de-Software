@@ -1,26 +1,32 @@
+version: '3.9'
+
 networks:
   appnet:
     driver: bridge
 
+volumes:
+  orders_mongo_data:
+  payments_postgres_data:
+  product_postgres_data:
+  client_postgres_data:
+
 services:
-  # --- Bancos ---
+  # -------------------------------
+  # Bancos
+  # -------------------------------
   orders-db:
     image: mongo:6.0
     restart: always
     environment:
       MONGO_INITDB_ROOT_USERNAME: admin
       MONGO_INITDB_ROOT_PASSWORD: admin
+      MONGO_INITDB_DATABASE: orders_db
     volumes:
       - orders_mongo_data:/data/db
     networks:
       - appnet
     ports:
       - "27017:27017"
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
 
   payments-db:
     image: postgres:15
@@ -35,11 +41,6 @@ services:
       - appnet
     ports:
       - "5432:5432"
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
 
   product-db:
     image: postgres:15
@@ -54,11 +55,6 @@ services:
       - appnet
     ports:
       - "5433:5432"
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
 
   client-db:
     image: postgres:15
@@ -73,16 +69,13 @@ services:
       - appnet
     ports:
       - "5434:5432"
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
 
-  # --- Services ---
+  # -------------------------------
+  # Serviços
+  # -------------------------------
   product-service:
     build: ./product-service
-    container_name: product_service
+    container_name: product-service
     restart: unless-stopped
     ports:
       - "3001:3000"
@@ -94,11 +87,6 @@ services:
       - product-db
       - orders-db
     command: ["node", "index.js"]
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
 
   order-service:
     build: ./order-service
@@ -107,18 +95,13 @@ services:
     ports:
       - "3002:3000"
     environment:
-      - DATABASE_URL=mongodb://orders-db:27017/orders_db
+      - DATABASE_URL=mongodb://admin:admin@orders-db:27017/orders_db
     networks:
       - appnet
     depends_on:
-      - product-service
       - orders-db
-    command: ["sh", "-c", "node seed.js || true && node index.js"]
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
+      - product-service
+    command: ["sh", "-c", "sleep 5 && node seed.js || true && node index.js"]
 
   client-service:
     build: ./client-service
@@ -134,35 +117,19 @@ services:
       - client-db
       - order-service
     command: ["node", "index.js"]
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
 
   payment-service:
     build: ./payment-service
-    container_name: payments_service
+    container_name: payment-service
     restart: unless-stopped
     ports:
       - "3004:3000"
     environment:
       - DATABASE_URL=postgresql://admin:admin@payments-db:5432/payments_db
-      - ORDER_API_URL=http://order-service:3000
+      - ORDER_API_URL=http://orders_service:3000
     networks:
       - appnet
     depends_on:
       - payments-db
       - order-service
-    command: ["sh", "-c", "node seed.js || true && node index.js"]
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-
-volumes:
-  orders_mongo_data:
-  payments_postgres_data:
-  product_postgres_data:
-  client_postgres_data:
+    command: ["sh", "-c", "sleep 10 && npx prisma migrate reset && node seed.js || true && node index.js"]
